@@ -86,7 +86,11 @@ function schedulePortal() {
     s.portalLifetimeId = setTimeout(async () => {
       if (currentState !== STATES.play || !s.portalPair) return;
       for (const pf of s.portalPair) {
-        await draw_pixel(pf.x + SCREEN_X, pf.y + SCREEN_Y, s.bg[`${pf.x},${pf.y}`] ?? BG_COLOR);
+        await draw_pixel(
+          pf.x + SCREEN_X,
+          pf.y + SCREEN_Y,
+          s.bg[`${pf.x},${pf.y}`] ?? BG_COLOR,
+        );
       }
       s.portalPair = null;
       schedulePortal();
@@ -106,7 +110,7 @@ const STATES = {
   },
   wait: {
     onMessage: async (x, y) => {
-      if (x >= 42 && y >= 26 && x <= 44 && y <= 28) {
+      if (x >= 71 && y >= 102 && x <= 73 && y <= 104) {
         await setState("prepare_play");
       }
     },
@@ -193,9 +197,17 @@ const STATES = {
         return;
       }
 
-      const foodIndex = s.foods.findIndex((f) => f.x === newHead.x && f.y === newHead.y);
-      const ateBonus = s.bonusFruit && newHead.x === s.bonusFruit.x && newHead.y === s.bonusFruit.y;
-      const portalIndex = s.portalPair?.findIndex((p) => p.x === newHead.x && p.y === newHead.y) ?? -1;
+      const foodIndex = s.foods.findIndex(
+        (f) => f.x === newHead.x && f.y === newHead.y,
+      );
+      const ateBonus =
+        s.bonusFruit &&
+        newHead.x === s.bonusFruit.x &&
+        newHead.y === s.bonusFruit.y;
+      const portalIndex =
+        s.portalPair?.findIndex(
+          (p) => p.x === newHead.x && p.y === newHead.y,
+        ) ?? -1;
 
       if (portalIndex !== -1) {
         clearTimeout(s.portalLifetimeId);
@@ -203,12 +215,24 @@ const STATES = {
         s.portalPair = null;
         await draw_pixel(head.x + SCREEN_X, head.y + SCREEN_Y, SNAKE_COLOR);
         // Effacer les deux portails
-        await draw_pixel(newHead.x + SCREEN_X, newHead.y + SCREEN_Y, s.bg[`${newHead.x},${newHead.y}`] ?? BG_COLOR);
-        await draw_pixel(dest.x + SCREEN_X, dest.y + SCREEN_Y, s.bg[`${dest.x},${dest.y}`] ?? BG_COLOR);
+        await draw_pixel(
+          newHead.x + SCREEN_X,
+          newHead.y + SCREEN_Y,
+          s.bg[`${newHead.x},${newHead.y}`] ?? BG_COLOR,
+        );
+        await draw_pixel(
+          dest.x + SCREEN_X,
+          dest.y + SCREEN_Y,
+          s.bg[`${dest.x},${dest.y}`] ?? BG_COLOR,
+        );
         s.snake.unshift(dest);
         await draw_pixel(dest.x + SCREEN_X, dest.y + SCREEN_Y, HEAD_COLOR);
         const tail = s.snake.pop();
-        await draw_pixel(tail.x + SCREEN_X, tail.y + SCREEN_Y, s.bg[`${tail.x},${tail.y}`] ?? BG_COLOR);
+        await draw_pixel(
+          tail.x + SCREEN_X,
+          tail.y + SCREEN_Y,
+          s.bg[`${tail.x},${tail.y}`] ?? BG_COLOR,
+        );
         schedulePortal();
         return;
       }
@@ -236,10 +260,18 @@ const STATES = {
         }
         const newFood = placeFood(s.snake, allSpecials());
         s.foods[foodIndex] = newFood;
-        await draw_pixel(newFood.x + SCREEN_X, newFood.y + SCREEN_Y, FOOD_COLOR);
+        await draw_pixel(
+          newFood.x + SCREEN_X,
+          newFood.y + SCREEN_Y,
+          FOOD_COLOR,
+        );
       } else {
         const tail = s.snake.pop();
-        await draw_pixel(tail.x + SCREEN_X, tail.y + SCREEN_Y, s.bg[`${tail.x},${tail.y}`] ?? BG_COLOR);
+        await draw_pixel(
+          tail.x + SCREEN_X,
+          tail.y + SCREEN_Y,
+          s.bg[`${tail.x},${tail.y}`] ?? BG_COLOR,
+        );
       }
     },
 

@@ -2,13 +2,12 @@ import QRCode from "qrcode";
 import { EventSource } from "eventsource";
 import sharp from "sharp";
 
-export const SCREEN_X = 15;
-export const SCREEN_Y = 0;
+export const SCREEN_X = 44;
+export const SCREEN_Y = 76;
 export const SCREEN_SIZE = 32;
 
 const SYNC_URL = "https://wall.plgrnd.cc";
 const SYNC_TOPIC = "https://plgrnd.cc/wall";
-const POST_DELAY = 0;
 
 let eventSource = null;
 
