@@ -25,10 +25,13 @@ const FOOD_COLOR = 2; // orange
 const BONUS_COLOR = 8; // violet
 const BG_COLOR = 0; // crème
 
-const FOOD_COUNT = 5;
-const BONUS_SPAWN_DELAY = 15000; // apparaît toutes les 15s
-const BONUS_LIFETIME = 8000; // disparaît après 8s si pas mangé
-const BONUS_DURATION = 10000; // effet dure 10s
+const FOOD_COUNT = 20;
+const BONUS_SPAWN_DELAY = 15000;
+const BONUS_LIFETIME = 8000;
+const BONUS_DURATION = 10000;
+const PORTAL_COLOR = 10; // turquoise
+const PORTAL_SPAWN_DELAY = 20000;
+const PORTAL_LIFETIME = 10000;
 
 function placeFood(snake, foods = []) {
   let pos;
@@ -44,18 +47,22 @@ function placeFood(snake, foods = []) {
   return pos;
 }
 
+function allSpecials() {
+  const s = STATES.play;
+  return [
+    ...s.foods,
+    ...(s.bonusFruit ? [s.bonusFruit] : []),
+    ...(s.portalPair ?? []),
+  ];
+}
+
 function scheduleBonus() {
   const s = STATES.play;
   s.spawnTimeoutId = setTimeout(async () => {
     if (currentState !== STATES.play) return;
-    const bf = placeFood(s.snake, [
-      ...s.foods,
-      ...(s.bonusFruit ? [s.bonusFruit] : []),
-    ]);
+    const bf = placeFood(s.snake, allSpecials());
     s.bonusFruit = bf;
     await draw_pixel(bf.x + SCREEN_X, bf.y + SCREEN_Y, BONUS_COLOR);
-
-    // Disparaît si pas mangé
     s.bonusLifetimeId = setTimeout(async () => {
       if (currentState !== STATES.play || !s.bonusFruit) return;
       const bgColor = s.bg[`${bf.x},${bf.y}`] ?? BG_COLOR;
@@ -64,6 +71,26 @@ function scheduleBonus() {
       scheduleBonus();
     }, BONUS_LIFETIME);
   }, BONUS_SPAWN_DELAY);
+}
+
+function schedulePortal() {
+  const s = STATES.play;
+  s.portalSpawnTimeoutId = setTimeout(async () => {
+    if (currentState !== STATES.play) return;
+    const pfA = placeFood(s.snake, allSpecials());
+    const pfB = placeFood(s.snake, [...allSpecials(), pfA]);
+    s.portalPair = [pfA, pfB];
+    await draw_pixel(pfA.x + SCREEN_X, pfA.y + SCREEN_Y, PORTAL_COLOR);
+    await draw_pixel(pfB.x + SCREEN_X, pfB.y + SCREEN_Y, PORTAL_COLOR);
+    s.portalLifetimeId = setTimeout(async () => {
+      if (currentState !== STATES.play || !s.portalPair) return;
+      for (const pf of s.portalPair) {
+        await draw_pixel(pf.x + SCREEN_X, pf.y + SCREEN_Y, s.bg[`${pf.x},${pf.y}`] ?? BG_COLOR);
+      }
+      s.portalPair = null;
+      schedulePortal();
+    }, PORTAL_LIFETIME);
+  }, PORTAL_SPAWN_DELAY);
 }
 
 let currentState = null;
@@ -102,14 +129,19 @@ const STATES = {
     bonusTimeoutId: null,
     bonusLifetimeId: null,
     spawnTimeoutId: null,
+    portalPair: null,
+    portalSpawnTimeoutId: null,
+    portalLifetimeId: null,
 
     onEnter: async () => {
       const s = STATES.play;
       s.score = 0;
       s.currentMs = 1000;
       s.bonusFruit = null;
+      s.portalPair = null;
       startLoop(1000);
       scheduleBonus();
+      schedulePortal();
 
       // Snapshot du canvas avant de dessiner quoi que ce soit
       s.bg = {};
@@ -150,26 +182,35 @@ const STATES = {
       s.dir = s.nextDir;
 
       const head = s.snake[0];
-      const newHead = { x: head.x + s.dir.dx, y: head.y + s.dir.dy };
+      const newHead = {
+        x: (head.x + s.dir.dx + SCREEN_SIZE) % SCREEN_SIZE,
+        y: (head.y + s.dir.dy + SCREEN_SIZE) % SCREEN_SIZE,
+      };
 
-      if (
-        newHead.x < 0 ||
-        newHead.x >= SCREEN_SIZE ||
-        newHead.y < 0 ||
-        newHead.y >= SCREEN_SIZE ||
-        s.snake.some((seg) => seg.x === newHead.x && seg.y === newHead.y)
-      ) {
+      if (s.snake.some((seg) => seg.x === newHead.x && seg.y === newHead.y)) {
         await setState("game_over");
         return;
       }
 
-      const foodIndex = s.foods.findIndex(
-        (f) => f.x === newHead.x && f.y === newHead.y,
-      );
-      const ateBonus =
-        s.bonusFruit &&
-        newHead.x === s.bonusFruit.x &&
-        newHead.y === s.bonusFruit.y;
+      const foodIndex = s.foods.findIndex((f) => f.x === newHead.x && f.y === newHead.y);
+      const ateBonus = s.bonusFruit && newHead.x === s.bonusFruit.x && newHead.y === s.bonusFruit.y;
+      const portalIndex = s.portalPair?.findIndex((p) => p.x === newHead.x && p.y === newHead.y) ?? -1;
+
+      if (portalIndex !== -1) {
+        clearTimeout(s.portalLifetimeId);
+        const dest = s.portalPair[1 - portalIndex]; // l'autre portail
+        s.portalPair = null;
+        await draw_pixel(head.x + SCREEN_X, head.y + SCREEN_Y, SNAKE_COLOR);
+        // Effacer les deux portails
+        await draw_pixel(newHead.x + SCREEN_X, newHead.y + SCREEN_Y, s.bg[`${newHead.x},${newHead.y}`] ?? BG_COLOR);
+        await draw_pixel(dest.x + SCREEN_X, dest.y + SCREEN_Y, s.bg[`${dest.x},${dest.y}`] ?? BG_COLOR);
+        s.snake.unshift(dest);
+        await draw_pixel(dest.x + SCREEN_X, dest.y + SCREEN_Y, HEAD_COLOR);
+        const tail = s.snake.pop();
+        await draw_pixel(tail.x + SCREEN_X, tail.y + SCREEN_Y, s.bg[`${tail.x},${tail.y}`] ?? BG_COLOR);
+        schedulePortal();
+        return;
+      }
 
       await draw_pixel(head.x + SCREEN_X, head.y + SCREEN_Y, SNAKE_COLOR);
       s.snake.unshift(newHead);
@@ -188,21 +229,16 @@ const STATES = {
         }, BONUS_DURATION);
       } else if (foodIndex !== -1) {
         s.score++;
-        if (s.score % 5 === 0) {
-          s.currentMs = Math.max(50, 1000 - Math.floor(s.score / 5) * 100);
+        if (s.score % 10 === 0) {
+          s.currentMs = Math.max(200, 1000 - Math.floor(s.score / 10) * 100);
           startLoop(s.currentMs);
         }
-        const newFood = placeFood(s.snake, s.foods);
+        const newFood = placeFood(s.snake, allSpecials());
         s.foods[foodIndex] = newFood;
-        await draw_pixel(
-          newFood.x + SCREEN_X,
-          newFood.y + SCREEN_Y,
-          FOOD_COLOR,
-        );
+        await draw_pixel(newFood.x + SCREEN_X, newFood.y + SCREEN_Y, FOOD_COLOR);
       } else {
         const tail = s.snake.pop();
-        const bgColor = s.bg[`${tail.x},${tail.y}`] ?? BG_COLOR;
-        await draw_pixel(tail.x + SCREEN_X, tail.y + SCREEN_Y, bgColor);
+        await draw_pixel(tail.x + SCREEN_X, tail.y + SCREEN_Y, s.bg[`${tail.x},${tail.y}`] ?? BG_COLOR);
       }
     },
 
@@ -211,7 +247,10 @@ const STATES = {
       clearTimeout(s.spawnTimeoutId);
       clearTimeout(s.bonusLifetimeId);
       clearTimeout(s.bonusTimeoutId);
+      clearTimeout(s.portalSpawnTimeoutId);
+      clearTimeout(s.portalLifetimeId);
       s.bonusFruit = null;
+      s.portalPair = null;
     },
 
     onMessage: (x, y, c, own) => {
