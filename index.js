@@ -13,7 +13,7 @@ for (const a of rawArgs) {
   else args[a.slice(2, eq)] = a.slice(eq + 1);
 }
 
-const canvas = new Canvas({ x: Number(args.x ?? 0), y: Number(args.y ?? 0) });
+const canvas = new Canvas({ x: Number(args.x ?? 0), y: Number(args.y ?? 0), restore: !args["no-restore"] });
 const snake = new SnakeApp({ canvas });
 
 await canvas.connect(({ x, y, c, sid }) => snake.onMessage(x, y, c, sid));

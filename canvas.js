@@ -34,9 +34,12 @@ export class Canvas {
   #syncWake = null;
   #pendingEcho = new Map();
 
-  constructor({ x = 0, y = 0 } = {}) {
+  #restore;
+
+  constructor({ x = 0, y = 0, restore = true } = {}) {
     this.#x = x;
     this.#y = y;
+    this.#restore = restore;
   }
 
   async connect(msgCallback) {
@@ -200,6 +203,7 @@ export class Canvas {
     this.#eventSource?.close();
     this.#eventSource = null;
     this.#dirty.clear();
+    if (!this.#restore) return;
     for (const [key, c] of Object.entries(this.#initialState)) {
       if (this.#state[key] !== c) {
         this.#state[key] = c;
