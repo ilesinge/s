@@ -6,13 +6,8 @@ export const SCREEN_X = 44;
 export const SCREEN_Y = 76;
 export const SCREEN_SIZE = 32;
 
-const SYNC_URL = "https://wall.plgrnd.cc";
+const SYNC_URL = process.env.WALL_URL ?? "https://wall.plgrnd.cc";
 const SYNC_TOPIC = "https://plgrnd.cc/wall";
-
-let eventSource = null;
-
-let canvasState = {};
-let savedStates = [];
 
 export const PALETTE = [
   "#EDE8DC", // 0  — vide (crème)
@@ -28,266 +23,259 @@ export const PALETTE = [
   "#50D8C8", // 10 — turquoise vif
 ];
 
-const ownPixels = new Map();
+export class Canvas {
+  #sessionId = crypto.randomUUID();
+  #eventSource = null;
+  #initialState = {};
+  #state = {};
+  #savedStates = [];
+  #dirty = new Set();
+  #closed = false;
+  #locked = false;
+  #syncWake = null;
 
-export async function draw_pixel(x, y, c) {
-  const key = `${x},${y}`;
-  ownPixels.set(key, (ownPixels.get(key) ?? 0) + 1);
+  async connect(msgCallback) {
+    await this.#loadServerState();
+    this.#openStream(msgCallback);
+    this.#syncLoop();
+  }
 
-  const body = JSON.stringify({
-    c: x,
-    r: y,
-    v: c,
-    sid: "pouet",
-  });
+  async #loadServerState() {
+    const ctrl = new AbortController();
+    const timeout = setTimeout(() => ctrl.abort(), 3000);
+    const res = await fetch(SYNC_URL + "/state", { signal: ctrl.signal });
+    clearTimeout(timeout);
+    const body = await res.json();
+    if (typeof body !== "object" || body === null || Array.isArray(body)) {
+      throw new Error(
+        `/state: expected a plain object, got ${JSON.stringify(body)}`,
+      );
+    }
+    this.#initialState = { ...body };
+    this.#state = body;
+  }
 
-  const resp = await fetch("https://wall.plgrnd.cc/pixel", {
-    body,
-    method: "POST",
-  });
-
-  if (!resp.ok) {
-    console.error(
-      `draw_pixel(${x},${y}) failed: ${resp.status} ${resp.statusText}`,
+  #openStream(msgCallback) {
+    if (this.#eventSource) this.#eventSource.close();
+    this.#eventSource = new EventSource(
+      SYNC_URL + "/.well-known/mercure?topic=" + encodeURIComponent(SYNC_TOPIC),
     );
+    this.#eventSource.onmessage = ({ data }) => {
+      const parsed = JSON.parse(data);
+      const coords = `${parsed.c},${parsed.r}`;
+      if (parsed.sid !== this.#sessionId) {
+        if (this.#locked) {
+          this.#dirty.add(coords);
+          this.#signalSync();
+        } else {
+          this.#state[coords] = parsed.v;
+        }
+        msgCallback?.({ x: parsed.c, y: parsed.r, c: parsed.v, sid: parsed.sid });
+      }
+    };
   }
-}
 
-const queue = [];
+  #signalSync() {
+    const wake = this.#syncWake;
+    this.#syncWake = null;
+    wake?.();
+  }
 
-export async function noise_fill() {
-  return new Promise((resolve) => {
-    for (let y = 0; y < SCREEN_SIZE; ++y) {
-      for (let x = 0; x < SCREEN_SIZE; ++x) {
-        const color = Math.floor(Math.random() * 10);
-        queue.push([x + SCREEN_X, y + SCREEN_Y, color]);
+  async #syncLoop() {
+    let requestCount = 0;
+    while (!this.#closed) {
+      if (this.#dirty.size === 0) {
+        await new Promise((r) => {
+          this.#syncWake = r;
+        });
+        continue;
+      }
+      const keys = [...this.#dirty];
+      const key = keys[Math.floor(Math.random() * keys.length)];
+      const c = this.#state[key];
+      this.#dirty.delete(key);
+      const [x, y] = key.split(",").map(Number);
+      const resp = await fetch(SYNC_URL + "/pixel", {
+        method: "POST",
+        body: JSON.stringify({ c: x, r: y, v: c, sid: this.#sessionId }),
+      });
+      if (!resp.ok)
+        console.error(
+          `sync pixel(${x},${y}) failed: ${resp.status} ${resp.statusText}`,
+        );
+      if (++requestCount >= 20) {
+        requestCount = 0;
+        await Canvas.wait(0);
       }
     }
+  }
 
-    resolve();
-  });
-}
+  lock() { this.#locked = true; }
+  unlock() { this.#locked = false; }
 
-export async function color_fill(color) {
-  return new Promise((resolve) => {
-    for (let y = 0; y < SCREEN_SIZE; ++y) {
-      for (let x = 0; x < SCREEN_SIZE; ++x) {
-        queue.push([x + SCREEN_X, y + SCREEN_Y, color]);
+  get_pixel(x, y) {
+    return this.#state[`${x},${y}`] ?? 0;
+  }
+
+  draw_pixel(x, y, c) {
+    const key = `${x},${y}`;
+    this.#state[key] = c;
+    this.#dirty.add(key);
+    this.#signalSync();
+  }
+
+  async flush() {
+    while (this.#dirty.size > 0) {
+      await Canvas.wait(0);
+    }
+  }
+
+  async close() {
+    this.#closed = true;
+    this.#signalSync();
+    this.#eventSource?.close();
+    this.#eventSource = null;
+    this.#dirty.clear();
+    for (const [key, c] of Object.entries(this.#initialState)) {
+      if (this.#state[key] !== c) {
+        this.#state[key] = c;
+        this.#dirty.add(key);
       }
     }
+    let requestCount = 0;
+    while (this.#dirty.size > 0) {
+      const keys = [...this.#dirty];
+      const key = keys[Math.floor(Math.random() * keys.length)];
+      const c = this.#state[key];
+      this.#dirty.delete(key);
+      const [x, y] = key.split(",").map(Number);
+      const resp = await fetch(SYNC_URL + "/pixel", {
+        method: "POST",
+        body: JSON.stringify({ c: x, r: y, v: c, sid: this.#sessionId }),
+      });
+      if (!resp.ok)
+        console.error(
+          `close pixel(${x},${y}) failed: ${resp.status} ${resp.statusText}`,
+        );
+      if (++requestCount >= 20) {
+        requestCount = 0;
+        await Canvas.wait(0);
+      }
+    }
+  }
 
-    resolve();
-  });
-}
+  #screen_fill(colorFn) {
+    for (let y = 0; y < SCREEN_SIZE; ++y)
+      for (let x = 0; x < SCREEN_SIZE; ++x)
+        this.draw_pixel(x + SCREEN_X, y + SCREEN_Y, colorFn(x, y));
+  }
 
-export async function qrcode(text, ox = 0, oy = 0) {
-  return new Promise((resolve) => {
+  color_fill(color) {
+    this.#screen_fill(() => color);
+  }
+
+  qrcode(text, ox = 0, oy = 0) {
     const qr = QRCode.create(text, { errorCorrectionLevel: "L" });
-
     const { data, size } = qr.modules;
-
-    for (let y = 0; y < size && y + oy < SCREEN_SIZE; y++) {
-      for (let x = 0; x < size && x + ox < SCREEN_SIZE; x++) {
-        const isDark = data[y * size + x];
-
-        queue.push([x + ox + SCREEN_X, y + oy + SCREEN_Y, isDark ? 9 : 0]);
-      }
-    }
-
-    resolve();
-  });
-}
-
-export async function doubleqrcode(text) {
-  return new Promise((resolve) => {
-    const text_a = text.substring(0, text.length / 2);
-    const text_b = text.substring(text.length / 2);
-
-    const qra = QRCode.create(text_a, { errorCorrectionLevel: "L" });
-    const qrb = QRCode.create(text_b, { errorCorrectionLevel: "L" });
-
-    const { data: data1, size } = qra.modules;
-    const { data: data2 } = qrb.modules;
-
-    for (let y = 0; y < size && y < SCREEN_SIZE; y++) {
-      for (let x = 0; x < size && x < SCREEN_SIZE; x++) {
-        let c = 0;
-
-        const dataA = data1[y * size + x];
-        const dataB = data2[y * size + x];
-
-        if (dataA) c = 3;
-        if (dataB) c = 7;
-        if (dataA && dataB) c = 9;
-
-        queue.push([x + SCREEN_X, y + SCREEN_Y, c]);
-      }
-    }
-
-    resolve();
-  });
-}
-
-export async function load_png(path) {
-  const image = sharp(path);
-  const { width, height } = await image.metadata();
-  const raw = await image.removeAlpha().raw().toBuffer();
-
-  const pixels = [];
-
-  for (let i = 0; i < raw.length; i += 3) {
-    const r = raw[i].toString(16).padStart(2, "0");
-    const g = raw[i + 1].toString(16).padStart(2, "0");
-    const b = raw[i + 2].toString(16).padStart(2, "0");
-    pixels.push(`#${r}${g}${b}`);
+    for (let y = 0; y < size && y + oy < SCREEN_SIZE; y++)
+      for (let x = 0; x < size && x + ox < SCREEN_SIZE; x++)
+        this.draw_pixel(
+          x + ox + SCREEN_X,
+          y + oy + SCREEN_Y,
+          data[y * size + x] ? 9 : 0,
+        );
   }
 
-  return { width, height, pixels };
-}
+  qrcode_centered(text) {
+    const { size } = QRCode.create(text, { errorCorrectionLevel: "L" }).modules;
+    const ox = Math.floor((SCREEN_SIZE - size) / 2);
+    const oy = Math.floor((SCREEN_SIZE - size) / 2);
+    this.qrcode(text, ox, oy);
+  }
 
-export async function wait(time) {
-  return new Promise((resolve) => setTimeout(resolve, time));
-}
+  doubleqrcode(text) {
+    const mid = text.length / 2;
+    const qra = QRCode.create(text.substring(0, mid), {
+      errorCorrectionLevel: "L",
+    });
+    const qrb = QRCode.create(text.substring(mid), {
+      errorCorrectionLevel: "L",
+    });
+    const { data: dataA, size } = qra.modules;
+    const { data: dataB } = qrb.modules;
+    for (let y = 0; y < size && y < SCREEN_SIZE; y++)
+      for (let x = 0; x < size && x < SCREEN_SIZE; x++) {
+        const a = dataA[y * size + x];
+        const b = dataB[y * size + x];
+        const c = a && b ? 9 : b ? 7 : a ? 3 : 0;
+        this.draw_pixel(x + SCREEN_X, y + SCREEN_Y, c);
+      }
+  }
 
-export function pick_random_in_queue() {
-  const index = Math.floor(Math.random() * queue.length);
-  return queue.splice(index, 1)[0];
-}
+  static async load_png(path) {
+    const image = sharp(path);
+    const { width, height } = await image.metadata();
+    const raw = await image.removeAlpha().raw().toBuffer();
+    const ch = (v) => v.toString(16).padStart(2, "0");
+    const pixels = [];
+    for (let i = 0; i < raw.length; i += 3)
+      pixels.push(`#${ch(raw[i])}${ch(raw[i + 1])}${ch(raw[i + 2])}`);
+    return { width, height, pixels };
+  }
 
-export async function conform_state(state) {
-  return new Promise((resolve) => {
+  draw_sprite({ width, height, pixels }) {
+    const colors = pixels.map(Canvas.nearest_palette);
+    for (let y = 0; y < SCREEN_SIZE && y < height; ++y)
+      for (let x = 0; x < SCREEN_SIZE && x < width; ++x)
+        this.draw_pixel(x + SCREEN_X, y + SCREEN_Y, colors[y * width + x]);
+  }
+
+  static #hexToRgb(hex) {
+    return [
+      parseInt(hex.slice(1, 3), 16),
+      parseInt(hex.slice(3, 5), 16),
+      parseInt(hex.slice(5, 7), 16),
+    ];
+  }
+
+  static nearest_palette(hex) {
+    const [r, g, b] = Canvas.#hexToRgb(hex);
+    let best = 0;
+    let bestDist = Infinity;
+    for (let i = 0; i < PALETTE.length; i++) {
+      const [pr, pg, pb] = Canvas.#hexToRgb(PALETTE[i]);
+      const dist = (r - pr) ** 2 + (g - pg) ** 2 + (b - pb) ** 2;
+      if (dist < bestDist) {
+        bestDist = dist;
+        best = i;
+      }
+    }
+    return best;
+  }
+
+  push_state() {
+    const snapshot = {};
+    for (let y = 0; y < SCREEN_SIZE; ++y)
+      for (let x = 0; x < SCREEN_SIZE; ++x) {
+        const coords = `${x + SCREEN_X},${y + SCREEN_Y}`;
+        snapshot[coords] = this.#state[coords] ?? 0;
+      }
+    this.#savedStates.push(snapshot);
+  }
+
+  pop_state() {
+    return this.#savedStates.pop();
+  }
+
+  conform_state(state) {
+    if (!state) return;
     for (const coords in state) {
       const [x, y] = coords.split(",").map(Number);
-      const c = state[coords];
-      queue.push([x, y, c]);
-    }
-    resolve();
-  });
-}
-
-export function nearest_palette(hex) {
-  const r = parseInt(hex.slice(1, 3), 16);
-  const g = parseInt(hex.slice(3, 5), 16);
-  const b = parseInt(hex.slice(5, 7), 16);
-
-  let best = 0;
-  let bestDist = Infinity;
-
-  for (let i = 0; i < PALETTE.length; i++) {
-    const pr = parseInt(PALETTE[i].slice(1, 3), 16);
-    const pg = parseInt(PALETTE[i].slice(3, 5), 16);
-    const pb = parseInt(PALETTE[i].slice(5, 7), 16);
-    const dist = (r - pr) ** 2 + (g - pg) ** 2 + (b - pb) ** 2;
-    if (dist < bestDist) {
-      bestDist = dist;
-      best = i;
+      this.draw_pixel(x, y, state[coords]);
     }
   }
 
-  return best;
-}
-
-export async function draw_sprite({ width, height, pixels }) {
-  return new Promise((resolve) => {
-    const colors = pixels.map(nearest_palette);
-
-    for (let y = 0; y < SCREEN_SIZE && y < height; ++y) {
-      for (let x = 0; x < SCREEN_SIZE && x < width; ++x) {
-        const index = y * width + x;
-        queue.push([x + SCREEN_X, y + SCREEN_Y, colors[index]]);
-      }
-    }
-
-    resolve();
-  });
-}
-
-export function push_state() {
-  const newState = {};
-
-  for (let y = 0; y < SCREEN_SIZE; ++y) {
-    for (let x = 0; x < SCREEN_SIZE; ++x) {
-      const coords = `${x + SCREEN_X},${y + SCREEN_Y}`;
-      const v = canvasState[coords] ?? 0;
-      newState[coords] = v;
-    }
-  }
-
-  savedStates.push(newState);
-}
-
-export function pop_state() {
-  return savedStates.pop();
-}
-
-export async function execute_queue() {
-  let requestCount = 0;
-  while (queue.length > 0) {
-    const params = pick_random_in_queue();
-    const [x, y, c] = params;
-    const canvas_coords = `${x},${y}`;
-    const canvas_color = canvasState[canvas_coords] ?? 0;
-
-    if (canvas_color === c) continue;
-
-    await draw_pixel(...params);
-    requestCount++;
-    if (requestCount >= 20) {
-      requestCount = 0;
-      await wait(0);
-    }
-  }
-
-  return;
-}
-
-export function openStream(msgCallback) {
-  if (!SYNC_URL) return;
-  if (eventSource) {
-    eventSource.close();
-  }
-
-  eventSource = new EventSource(
-    SYNC_URL + "/.well-known/mercure?topic=" + encodeURIComponent(SYNC_TOPIC),
-  );
-
-  eventSource.onmessage = ({ data }) => {
-    const parsed = JSON.parse(data);
-    const coords = `${parsed.c},${parsed.r}`;
-
-    const count = ownPixels.get(coords) ?? 0;
-    const own = count > 0;
-    if (own) {
-      if (count === 1) ownPixels.delete(coords);
-      else ownPixels.set(coords, count - 1);
-    }
-
-    msgCallback?.({ x: parsed.c, y: parsed.r, c: parsed.v, own });
-
-    canvasState[coords] = parsed.v;
-  };
-
-  //eventSource.onerror = (...data) => console.error(data);
-}
-
-export function get_pixel(x, y) {
-  return canvasState[`${x},${y}`] ?? 0;
-}
-
-export async function loadServerState() {
-  const ctrl = new AbortController();
-  const timeout = setTimeout(() => {
-    ctrl.abort();
-    console.log("ABORT");
-  }, 3000);
-
-  try {
-    const res = await fetch(SYNC_URL + "/state", { signal: ctrl.signal });
-    const serverState = await res.json();
-    canvasState = serverState;
-    clearTimeout(timeout);
-  } catch {
-    console.log("error");
-    clearTimeout(timeout);
+  static wait(ms) {
+    return new Promise((r) => setTimeout(r, ms));
   }
 }
