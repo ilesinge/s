@@ -8,7 +8,6 @@ export const SCREEN_SIZE = 32;
 
 const SYNC_URL = process.env.WALL_URL ?? "https://wall.plgrnd.cc";
 const SYNC_TOPIC = "https://plgrnd.cc/wall";
-
 export const PALETTE = [
   "#EDE8DC", // 0  — vide (crème)
   "#D4B882", // 1  — buff doré
@@ -33,6 +32,7 @@ export class Canvas {
   #closed = false;
   #locked = false;
   #syncWake = null;
+  #pendingEcho = new Map();
 
   async connect(msgCallback) {
     await this.#loadServerState();
@@ -53,25 +53,73 @@ export class Canvas {
     }
     this.#initialState = { ...body };
     this.#state = body;
+    await this.#saveSnapshot(this.#initialState);
+  }
+
+  async #saveSnapshot(state) {
+    const entries = Object.keys(state);
+    if (entries.length === 0) return;
+
+    let minX = Infinity,
+      minY = Infinity,
+      maxX = -Infinity,
+      maxY = -Infinity;
+    for (const key of entries) {
+      const [x, y] = key.split(",").map(Number);
+      if (x < minX) minX = x;
+      if (y < minY) minY = y;
+      if (x > maxX) maxX = x;
+      if (y > maxY) maxY = y;
+    }
+
+    const w = maxX - minX + 1;
+    const h = maxY - minY + 1;
+    const buf = Buffer.alloc(w * h * 3);
+
+    for (let y = minY; y <= maxY; y++) {
+      for (let x = minX; x <= maxX; x++) {
+        const c = state[`${x},${y}`] ?? 0;
+        const [r, g, b] = Canvas.#hexToRgb(PALETTE[c] ?? PALETTE[0]);
+        const i = ((y - minY) * w + (x - minX)) * 3;
+        buf[i] = r;
+        buf[i + 1] = g;
+        buf[i + 2] = b;
+      }
+    }
+
+    await sharp(buf, { raw: { width: w, height: h, channels: 3 } })
+      .png()
+      .toFile("snapshot.png");
   }
 
   #openStream(msgCallback) {
     if (this.#eventSource) this.#eventSource.close();
+
     this.#eventSource = new EventSource(
       SYNC_URL + "/.well-known/mercure?topic=" + encodeURIComponent(SYNC_TOPIC),
     );
+
     this.#eventSource.onmessage = ({ data }) => {
       const parsed = JSON.parse(data);
       const coords = `${parsed.c},${parsed.r}`;
-      if (parsed.sid !== this.#sessionId) {
-        if (this.#locked) {
-          this.#dirty.add(coords);
-          this.#signalSync();
-        } else {
-          this.#state[coords] = parsed.v;
-        }
-        msgCallback?.({ x: parsed.c, y: parsed.r, c: parsed.v, sid: parsed.sid });
+
+      const pending = this.#pendingEcho.get(coords) ?? 0;
+      if (pending > 0) {
+        if (pending === 1) this.#pendingEcho.delete(coords);
+        else this.#pendingEcho.set(coords, pending - 1);
+        this.#state[coords] = parsed.v;
+        return; // our own echo — state already correct, don't notify game
       }
+
+      // external change
+      if (this.#locked) {
+        this.#dirty.add(coords);
+        this.#signalSync();
+      } else {
+        this.#state[coords] = parsed.v;
+      }
+
+      msgCallback?.({ x: parsed.c, y: parsed.r, c: parsed.v, sid: parsed.sid });
     };
   }
 
@@ -95,14 +143,17 @@ export class Canvas {
       const c = this.#state[key];
       this.#dirty.delete(key);
       const [x, y] = key.split(",").map(Number);
+      this.#pendingEcho.set(key, (this.#pendingEcho.get(key) ?? 0) + 1);
       const resp = await fetch(SYNC_URL + "/pixel", {
         method: "POST",
         body: JSON.stringify({ c: x, r: y, v: c, sid: this.#sessionId }),
       });
-      if (!resp.ok)
-        console.error(
-          `sync pixel(${x},${y}) failed: ${resp.status} ${resp.statusText}`,
-        );
+      if (!resp.ok) {
+        const n = this.#pendingEcho.get(key);
+        if (n <= 1) this.#pendingEcho.delete(key);
+        else this.#pendingEcho.set(key, n - 1);
+        console.error(`sync pixel(${x},${y}) failed: ${resp.status} ${resp.statusText}`);
+      }
       if (++requestCount >= 20) {
         requestCount = 0;
         await Canvas.wait(0);
@@ -110,8 +161,12 @@ export class Canvas {
     }
   }
 
-  lock() { this.#locked = true; }
-  unlock() { this.#locked = false; }
+  lock() {
+    this.#locked = true;
+  }
+  unlock() {
+    this.#locked = false;
+  }
 
   get_pixel(x, y) {
     return this.#state[`${x},${y}`] ?? 0;
@@ -119,6 +174,7 @@ export class Canvas {
 
   draw_pixel(x, y, c) {
     const key = `${x},${y}`;
+    if ((this.#state[key] ?? 0) === c) return;
     this.#state[key] = c;
     this.#dirty.add(key);
     this.#signalSync();
@@ -149,14 +205,17 @@ export class Canvas {
       const c = this.#state[key];
       this.#dirty.delete(key);
       const [x, y] = key.split(",").map(Number);
+      this.#pendingEcho.set(key, (this.#pendingEcho.get(key) ?? 0) + 1);
       const resp = await fetch(SYNC_URL + "/pixel", {
         method: "POST",
         body: JSON.stringify({ c: x, r: y, v: c, sid: this.#sessionId }),
       });
-      if (!resp.ok)
-        console.error(
-          `close pixel(${x},${y}) failed: ${resp.status} ${resp.statusText}`,
-        );
+      if (!resp.ok) {
+        const n = this.#pendingEcho.get(key);
+        if (n <= 1) this.#pendingEcho.delete(key);
+        else this.#pendingEcho.set(key, n - 1);
+        console.error(`close pixel(${x},${y}) failed: ${resp.status} ${resp.statusText}`);
+      }
       if (++requestCount >= 20) {
         requestCount = 0;
         await Canvas.wait(0);

@@ -114,8 +114,7 @@ export class PlayState extends AppState {
     }, PORTAL_SPAWN_DELAY);
   }
 
-  onEnter() {
-    this.canvas.lock();
+  async onEnter() {
     this.score = 0;
     this.currentMs = 1000;
     this.bonusFruit = null;
@@ -145,6 +144,7 @@ export class PlayState extends AppState {
       this.foods.push(f);
       this.canvas.draw_pixel(f.x + SCREEN_X, f.y + SCREEN_Y, FOOD_COLOR);
     }
+
     for (let i = 0; i < this.snake.length; i++) {
       const seg = this.snake[i];
       this.canvas.draw_pixel(
@@ -153,6 +153,9 @@ export class PlayState extends AppState {
         i === 0 ? HEAD_COLOR : SNAKE_COLOR,
       );
     }
+
+    await this.canvas.flush();
+    this.canvas.lock();
 
     this.#startLoop(1000);
     this.#scheduleBonus();
