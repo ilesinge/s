@@ -1,4 +1,4 @@
-import { SCREEN_X, SCREEN_Y, SCREEN_SIZE } from "../canvas.js";
+import { SCREEN_SIZE } from "../canvas.js";
 import { AppState } from "../states/AppState.js";
 
 const SNAKE_COLOR = 5; // vert
@@ -78,12 +78,12 @@ export class PlayState extends AppState {
       if (!this.snake) return;
       const bf = this.#placeFood(this.#allSpecials());
       this.bonusFruit = bf;
-      this.canvas.draw_pixel(bf.x + SCREEN_X, bf.y + SCREEN_Y, BONUS_COLOR);
+      this.canvas.draw_pixel(bf.x, bf.y, BONUS_COLOR);
       this.bonusLifetimeId = setTimeout(() => {
         if (!this.bonusFruit) return;
         this.canvas.draw_pixel(
-          bf.x + SCREEN_X,
-          bf.y + SCREEN_Y,
+          bf.x,
+          bf.y,
           this.#bgAt(bf.x, bf.y),
         );
         this.bonusFruit = null;
@@ -98,14 +98,14 @@ export class PlayState extends AppState {
       const pfA = this.#placeFood(this.#allSpecials());
       const pfB = this.#placeFood([...this.#allSpecials(), pfA]);
       this.portalPair = [pfA, pfB];
-      this.canvas.draw_pixel(pfA.x + SCREEN_X, pfA.y + SCREEN_Y, PORTAL_COLOR);
-      this.canvas.draw_pixel(pfB.x + SCREEN_X, pfB.y + SCREEN_Y, PORTAL_COLOR);
+      this.canvas.draw_pixel(pfA.x, pfA.y, PORTAL_COLOR);
+      this.canvas.draw_pixel(pfB.x, pfB.y, PORTAL_COLOR);
       this.portalLifetimeId = setTimeout(() => {
         if (!this.portalPair) return;
         for (const pf of this.portalPair)
           this.canvas.draw_pixel(
-            pf.x + SCREEN_X,
-            pf.y + SCREEN_Y,
+            pf.x,
+            pf.y,
             this.#bgAt(pf.x, pf.y),
           );
         this.portalPair = null;
@@ -124,8 +124,8 @@ export class PlayState extends AppState {
     for (let y = 0; y < SCREEN_SIZE; y++)
       for (let x = 0; x < SCREEN_SIZE; x++)
         this.bg[`${x},${y}`] = this.canvas.get_pixel(
-          x + SCREEN_X,
-          y + SCREEN_Y,
+          x,
+          y,
         );
 
     const cx = Math.floor(SCREEN_SIZE / 2);
@@ -142,14 +142,14 @@ export class PlayState extends AppState {
     for (let i = 0; i < FOOD_COUNT; i++) {
       const f = this.#placeFood(this.foods);
       this.foods.push(f);
-      this.canvas.draw_pixel(f.x + SCREEN_X, f.y + SCREEN_Y, FOOD_COLOR);
+      this.canvas.draw_pixel(f.x, f.y, FOOD_COLOR);
     }
 
     for (let i = 0; i < this.snake.length; i++) {
       const seg = this.snake[i];
       this.canvas.draw_pixel(
-        seg.x + SCREEN_X,
-        seg.y + SCREEN_Y,
+        seg.x,
+        seg.y,
         i === 0 ? HEAD_COLOR : SNAKE_COLOR,
       );
     }
@@ -190,34 +190,34 @@ export class PlayState extends AppState {
       clearTimeout(this.portalLifetimeId);
       const dest = this.portalPair[1 - portalIndex];
       this.portalPair = null;
-      this.canvas.draw_pixel(head.x + SCREEN_X, head.y + SCREEN_Y, SNAKE_COLOR);
+      this.canvas.draw_pixel(head.x, head.y, SNAKE_COLOR);
       this.canvas.draw_pixel(
-        newHead.x + SCREEN_X,
-        newHead.y + SCREEN_Y,
+        newHead.x,
+        newHead.y,
         this.#bgAt(newHead.x, newHead.y),
       );
       this.canvas.draw_pixel(
-        dest.x + SCREEN_X,
-        dest.y + SCREEN_Y,
+        dest.x,
+        dest.y,
         this.#bgAt(dest.x, dest.y),
       );
       this.snake.unshift(dest);
-      this.canvas.draw_pixel(dest.x + SCREEN_X, dest.y + SCREEN_Y, HEAD_COLOR);
+      this.canvas.draw_pixel(dest.x, dest.y, HEAD_COLOR);
       const portalTail = this.snake.pop();
       this.canvas.draw_pixel(
-        portalTail.x + SCREEN_X,
-        portalTail.y + SCREEN_Y,
+        portalTail.x,
+        portalTail.y,
         this.#bgAt(portalTail.x, portalTail.y),
       );
       this.#schedulePortal();
       return;
     }
 
-    this.canvas.draw_pixel(head.x + SCREEN_X, head.y + SCREEN_Y, SNAKE_COLOR);
+    this.canvas.draw_pixel(head.x, head.y, SNAKE_COLOR);
     this.snake.unshift(newHead);
     this.canvas.draw_pixel(
-      newHead.x + SCREEN_X,
-      newHead.y + SCREEN_Y,
+      newHead.x,
+      newHead.y,
       HEAD_COLOR,
     );
 
@@ -244,15 +244,15 @@ export class PlayState extends AppState {
       const newFood = this.#placeFood(this.#allSpecials());
       this.foods[foodIndex] = newFood;
       this.canvas.draw_pixel(
-        newFood.x + SCREEN_X,
-        newFood.y + SCREEN_Y,
+        newFood.x,
+        newFood.y,
         FOOD_COLOR,
       );
     } else {
       const tail = this.snake.pop();
       this.canvas.draw_pixel(
-        tail.x + SCREEN_X,
-        tail.y + SCREEN_Y,
+        tail.x,
+        tail.y,
         this.#bgAt(tail.x, tail.y),
       );
     }
@@ -275,17 +275,15 @@ export class PlayState extends AppState {
   onMessage(x, y, v, sid) {
     if (!this.snake) return;
 
-    const bx = x - SCREEN_X;
-    const by = y - SCREEN_Y;
-    if (bx >= 0 && bx < SCREEN_SIZE && by >= 0 && by < SCREEN_SIZE) {
+    if (x >= 0 && x < SCREEN_SIZE && y >= 0 && y < SCREEN_SIZE) {
       const oldColor = this.canvas.get_pixel(x, y);
-      this.bg[`${bx},${by}`] = oldColor;
+      this.bg[`${x},${y}`] = oldColor;
       this.canvas.draw_pixel(x, y, oldColor);
     }
 
     const head = this.snake[0];
-    const ry = y - SCREEN_Y - head.y;
-    const rx = x - SCREEN_X - head.x;
+    const ry = y - head.y;
+    const rx = x - head.x;
 
     if (this.nextDir.dx !== 0) {
       if (ry < 0) this.nextDir = { dx: 0, dy: -1 };

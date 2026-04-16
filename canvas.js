@@ -2,8 +2,6 @@ import QRCode from "qrcode";
 import { EventSource } from "eventsource";
 import sharp from "sharp";
 
-export const SCREEN_X = 44;
-export const SCREEN_Y = 76;
 export const SCREEN_SIZE = 32;
 
 const SYNC_URL = process.env.WALL_URL ?? "https://wall.plgrnd.cc";
@@ -23,6 +21,8 @@ export const PALETTE = [
 ];
 
 export class Canvas {
+  #x;
+  #y;
   #sessionId = crypto.randomUUID();
   #eventSource = null;
   #initialState = {};
@@ -33,6 +33,11 @@ export class Canvas {
   #locked = false;
   #syncWake = null;
   #pendingEcho = new Map();
+
+  constructor({ x = 0, y = 0 } = {}) {
+    this.#x = x;
+    this.#y = y;
+  }
 
   async connect(msgCallback) {
     await this.#loadServerState();
@@ -112,14 +117,17 @@ export class Canvas {
       }
 
       // external change
-      if (this.#locked) {
+      const lx = parsed.c - this.#x;
+      const ly = parsed.r - this.#y;
+      const inBounds = lx >= 0 && lx < SCREEN_SIZE && ly >= 0 && ly < SCREEN_SIZE;
+      if (this.#locked && inBounds) {
         this.#dirty.add(coords);
         this.#signalSync();
       } else {
         this.#state[coords] = parsed.v;
       }
 
-      msgCallback?.({ x: parsed.c, y: parsed.r, c: parsed.v, sid: parsed.sid });
+      msgCallback?.({ x: lx, y: ly, c: parsed.v, sid: parsed.sid });
     };
   }
 
@@ -169,11 +177,11 @@ export class Canvas {
   }
 
   get_pixel(x, y) {
-    return this.#state[`${x},${y}`] ?? 0;
+    return this.#state[`${x + this.#x},${y + this.#y}`] ?? 0;
   }
 
   draw_pixel(x, y, c) {
-    const key = `${x},${y}`;
+    const key = `${x + this.#x},${y + this.#y}`;
     if ((this.#state[key] ?? 0) === c) return;
     this.#state[key] = c;
     this.#dirty.add(key);
@@ -226,7 +234,7 @@ export class Canvas {
   #screen_fill(colorFn) {
     for (let y = 0; y < SCREEN_SIZE; ++y)
       for (let x = 0; x < SCREEN_SIZE; ++x)
-        this.draw_pixel(x + SCREEN_X, y + SCREEN_Y, colorFn(x, y));
+        this.draw_pixel(x, y, colorFn(x, y));
   }
 
   color_fill(color) {
@@ -238,11 +246,7 @@ export class Canvas {
     const { data, size } = qr.modules;
     for (let y = 0; y < size && y + oy < SCREEN_SIZE; y++)
       for (let x = 0; x < size && x + ox < SCREEN_SIZE; x++)
-        this.draw_pixel(
-          x + ox + SCREEN_X,
-          y + oy + SCREEN_Y,
-          data[y * size + x] ? 9 : 0,
-        );
+        this.draw_pixel(x + ox, y + oy, data[y * size + x] ? 9 : 0);
   }
 
   qrcode_centered(text) {
@@ -267,7 +271,7 @@ export class Canvas {
         const a = dataA[y * size + x];
         const b = dataB[y * size + x];
         const c = a && b ? 9 : b ? 7 : a ? 3 : 0;
-        this.draw_pixel(x + SCREEN_X, y + SCREEN_Y, c);
+        this.draw_pixel(x, y, c);
       }
   }
 
@@ -286,7 +290,7 @@ export class Canvas {
     const colors = pixels.map(Canvas.nearest_palette);
     for (let y = 0; y < SCREEN_SIZE && y < height; ++y)
       for (let x = 0; x < SCREEN_SIZE && x < width; ++x)
-        this.draw_pixel(x + SCREEN_X, y + SCREEN_Y, colors[y * width + x]);
+        this.draw_pixel(x, y, colors[y * width + x]);
   }
 
   static #hexToRgb(hex) {
@@ -315,10 +319,8 @@ export class Canvas {
   push_state() {
     const snapshot = {};
     for (let y = 0; y < SCREEN_SIZE; ++y)
-      for (let x = 0; x < SCREEN_SIZE; ++x) {
-        const coords = `${x + SCREEN_X},${y + SCREEN_Y}`;
-        snapshot[coords] = this.#state[coords] ?? 0;
-      }
+      for (let x = 0; x < SCREEN_SIZE; ++x)
+        snapshot[`${x},${y}`] = this.get_pixel(x, y);
     this.#savedStates.push(snapshot);
   }
 
