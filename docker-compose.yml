@@ -1,0 +1,5 @@
+services:
+  app:
+    build: .
+    image: snake
+    restart: unless-stopped

@@ -18,3 +18,8 @@ Launch snake directly
 ```shell
 npm run dev -- --x=44 --y=77 --snake
 ```
+
+Use with Docker/Docker compose
+```shell
+docker compose up --build
+```
