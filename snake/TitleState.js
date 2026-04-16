@@ -9,7 +9,9 @@ export class TitleState extends AppState {
 
   async onMessage(x, y) {
     if (x >= 71 && y >= 102 && x <= 73 && y <= 104) {
-      await this.setState("prepare_play");
+      this.canvas.color_fill(9);
+      await this.canvas.flush();
+      await this.setState("play");
     }
   }
 }

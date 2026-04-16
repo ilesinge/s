@@ -1,6 +1,5 @@
 import { App } from "../App.js";
 import { TitleState } from "./TitleState.js";
-import { PreparePlayState } from "./PreparePlayState.js";
 import { PlayState } from "./PlayState.js";
 import { GameOverState } from "./GameOverState.js";
 import { ShowQrState } from "./ShowQrState.js";
@@ -13,7 +12,6 @@ export class SnakeApp extends App {
       setState: (name) => this.setState(name),
     };
     this._register("title", new TitleState(stateDeps));
-    this._register("prepare_play", new PreparePlayState(stateDeps));
     this._register("play", new PlayState(stateDeps));
     this._register("game_over", new GameOverState(stateDeps));
     this._register("show_qr", new ShowQrState(stateDeps));

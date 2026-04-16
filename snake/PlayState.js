@@ -115,6 +115,7 @@ export class PlayState extends AppState {
   }
 
   onEnter() {
+    this.canvas.lock();
     this.score = 0;
     this.currentMs = 1000;
     this.bonusFruit = null;
@@ -255,6 +256,7 @@ export class PlayState extends AppState {
   }
 
   onExit() {
+    this.canvas.unlock();
     clearInterval(this.#loopIntervalId);
     this.#loopIntervalId = null;
     clearTimeout(this.spawnTimeoutId);
