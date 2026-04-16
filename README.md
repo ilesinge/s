@@ -8,8 +8,13 @@ npm install
 node index.js
 ```
 
-will open a menu, you can chose from clearing the square, drawing some qr or
-playing snake.
+```shell
+npm run dev
+```
 
-The snake uses the pixel flipping messages as input click above / belove or left / right
-to the snake to make it change direction.
+type "/help" to see available commands.
+
+Launch snake directly
+```shell
+npm run dev -- --x=44 --y=77 --snake
+```
