@@ -34,6 +34,8 @@ export class PlayState extends AppState {
     this.add(
       new ProgressBarDrawable(() => Math.max(0, 1 - this.#elapsed / PLAY_TIME)),
     );
+
+    await this.render();
   }
 
   onUpdate(dt) {

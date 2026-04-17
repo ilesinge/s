@@ -3,7 +3,7 @@ import { GameObject } from "../scene/GameObject.js";
 import { SCREEN_SIZE } from "../canvas.js";
 import { GridDrawable } from "./GridDrawable.js";
 
-const DRAW_TIME = 10000;
+const DRAW_TIME = 30000;
 
 class ProgressBarDrawable extends GameObject {
   #getRemaining;
@@ -15,8 +15,7 @@ class ProgressBarDrawable extends GameObject {
 
   draw(buf, width) {
     const filled = Math.round(SCREEN_SIZE * this.#getRemaining());
-    for (let x = 0; x < SCREEN_SIZE; x++)
-      buf[x] = x < filled ? 0 : 9;
+    for (let x = 0; x < SCREEN_SIZE; x++) buf[x] = x < filled ? 0 : 9;
   }
 }
 
@@ -29,7 +28,11 @@ export class DrawState extends AppState {
     this.#done = false;
     this.app.grid.fill(false);
     this.add(new GridDrawable(this.app.grid));
-    this.add(new ProgressBarDrawable(() => Math.max(0, 1 - this.#elapsed / DRAW_TIME)));
+    this.add(
+      new ProgressBarDrawable(() => Math.max(0, 1 - this.#elapsed / DRAW_TIME)),
+    );
+
+    await this.render();
   }
 
   onUpdate(dt) {
