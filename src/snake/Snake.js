@@ -7,6 +7,8 @@ export class Snake extends GameObject {
   #nextDir = { dx: 1, dy: 0 };
   #speed = 1000; // ms per tick
   #accumulator = 0;
+  #inactivity = 0;
+  static #INACTIVITY_LIMIT = 30000;
   #pendingGrow = false;
   #moveCount = 0;
   #pattern = [5];
@@ -58,6 +60,11 @@ export class Snake extends GameObject {
 
   onUpdate(dt) {
     if (this.#dead) return;
+    this.#inactivity += dt;
+    if (this.#inactivity >= Snake.#INACTIVITY_LIMIT) {
+      this.die();
+      return;
+    }
     this.#accumulator += dt;
     if (this.#accumulator < this.#speed) return;
     this.#accumulator = 0;
@@ -150,6 +157,7 @@ export class Snake extends GameObject {
 
   onMessage(x, y, v, sid) {
     if (this.#sid && this.#sid != sid) return;
+    this.#inactivity = 0;
     if (this.#segments.length === 0) return;
     const head = this.#segments[0];
     const ry = y - head.y;
