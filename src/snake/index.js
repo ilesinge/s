@@ -1,4 +1,4 @@
-import { App } from "../App.js";
+import { App } from "../app/App.js";
 import { TitleState } from "./TitleState.js";
 import { PlayState } from "./PlayState.js";
 import { GameOverState } from "./GameOverState.js";

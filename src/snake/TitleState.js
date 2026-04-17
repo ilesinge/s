@@ -1,5 +1,5 @@
 import { Canvas } from "../canvas.js";
-import { AppState } from "../states/AppState.js";
+import { AppState } from "../app/AppState.js";
 
 export class TitleState extends AppState {
   async onEnter() {

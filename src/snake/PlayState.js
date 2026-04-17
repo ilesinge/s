@@ -1,5 +1,5 @@
 import { SCREEN_SIZE } from "../canvas.js";
-import { AppState } from "../states/AppState.js";
+import { AppState } from "../app/AppState.js";
 
 const SNAKE_COLOR = 5; // vert
 const HEAD_COLOR = 6; // émeraude
@@ -81,11 +81,7 @@ export class PlayState extends AppState {
       this.canvas.draw_pixel(bf.x, bf.y, BONUS_COLOR);
       this.bonusLifetimeId = setTimeout(() => {
         if (!this.bonusFruit) return;
-        this.canvas.draw_pixel(
-          bf.x,
-          bf.y,
-          this.#bgAt(bf.x, bf.y),
-        );
+        this.canvas.draw_pixel(bf.x, bf.y, this.#bgAt(bf.x, bf.y));
         this.bonusFruit = null;
         this.#scheduleBonus();
       }, BONUS_LIFETIME);
@@ -103,11 +99,7 @@ export class PlayState extends AppState {
       this.portalLifetimeId = setTimeout(() => {
         if (!this.portalPair) return;
         for (const pf of this.portalPair)
-          this.canvas.draw_pixel(
-            pf.x,
-            pf.y,
-            this.#bgAt(pf.x, pf.y),
-          );
+          this.canvas.draw_pixel(pf.x, pf.y, this.#bgAt(pf.x, pf.y));
         this.portalPair = null;
         this.#schedulePortal();
       }, PORTAL_LIFETIME);
@@ -123,10 +115,7 @@ export class PlayState extends AppState {
     this.bg = {};
     for (let y = 0; y < SCREEN_SIZE; y++)
       for (let x = 0; x < SCREEN_SIZE; x++)
-        this.bg[`${x},${y}`] = this.canvas.get_pixel(
-          x,
-          y,
-        );
+        this.bg[`${x},${y}`] = this.canvas.get_pixel(x, y);
 
     const cx = Math.floor(SCREEN_SIZE / 2);
     const cy = Math.floor(SCREEN_SIZE / 2);
@@ -147,11 +136,7 @@ export class PlayState extends AppState {
 
     for (let i = 0; i < this.snake.length; i++) {
       const seg = this.snake[i];
-      this.canvas.draw_pixel(
-        seg.x,
-        seg.y,
-        i === 0 ? HEAD_COLOR : SNAKE_COLOR,
-      );
+      this.canvas.draw_pixel(seg.x, seg.y, i === 0 ? HEAD_COLOR : SNAKE_COLOR);
     }
 
     await this.canvas.flush();
@@ -196,11 +181,7 @@ export class PlayState extends AppState {
         newHead.y,
         this.#bgAt(newHead.x, newHead.y),
       );
-      this.canvas.draw_pixel(
-        dest.x,
-        dest.y,
-        this.#bgAt(dest.x, dest.y),
-      );
+      this.canvas.draw_pixel(dest.x, dest.y, this.#bgAt(dest.x, dest.y));
       this.snake.unshift(dest);
       this.canvas.draw_pixel(dest.x, dest.y, HEAD_COLOR);
       const portalTail = this.snake.pop();
@@ -215,11 +196,7 @@ export class PlayState extends AppState {
 
     this.canvas.draw_pixel(head.x, head.y, SNAKE_COLOR);
     this.snake.unshift(newHead);
-    this.canvas.draw_pixel(
-      newHead.x,
-      newHead.y,
-      HEAD_COLOR,
-    );
+    this.canvas.draw_pixel(newHead.x, newHead.y, HEAD_COLOR);
 
     if (ateBonus) {
       clearTimeout(this.bonusLifetimeId);
@@ -243,18 +220,10 @@ export class PlayState extends AppState {
       }
       const newFood = this.#placeFood(this.#allSpecials());
       this.foods[foodIndex] = newFood;
-      this.canvas.draw_pixel(
-        newFood.x,
-        newFood.y,
-        FOOD_COLOR,
-      );
+      this.canvas.draw_pixel(newFood.x, newFood.y, FOOD_COLOR);
     } else {
       const tail = this.snake.pop();
-      this.canvas.draw_pixel(
-        tail.x,
-        tail.y,
-        this.#bgAt(tail.x, tail.y),
-      );
+      this.canvas.draw_pixel(tail.x, tail.y, this.#bgAt(tail.x, tail.y));
     }
   }
 

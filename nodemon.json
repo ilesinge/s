@@ -1,5 +1,5 @@
 {
-  "watch": ["index.js", "canvas.js"],
+  "watch": ["src"],
   "ext": "js",
   "ignore": ["node_modules", "sprites"]
 }

@@ -5,11 +5,13 @@ export class App {
   #currentState = null;
   #currentStateName = undefined;
 
-  constructor({ canvas }) {
+  constructor(canvas, options) {
     this.canvas = canvas;
+    this.options = options;
   }
 
   _register(name, state) {
+    state.app = this;
     this.#states[name] = state;
   }
 

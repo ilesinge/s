@@ -1,6 +1,10 @@
 import QRCode from "qrcode";
 import { EventSource } from "eventsource";
 import sharp from "sharp";
+import { fileURLToPath } from "url";
+import { dirname, resolve } from "path";
+
+const PROJECT_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
 export const SCREEN_SIZE = 32;
 
@@ -32,8 +36,6 @@ export class Canvas {
   #closed = false;
   #locked = false;
   #syncWake = null;
-  #pendingEcho = new Map();
-
   #restore;
 
   constructor({ x = 0, y = 0, restore = true } = {}) {
@@ -97,7 +99,7 @@ export class Canvas {
 
     await sharp(buf, { raw: { width: w, height: h, channels: 3 } })
       .png()
-      .toFile("snapshot.png");
+      .toFile(resolve(PROJECT_ROOT, "snapshot.png"));
   }
 
   #openStream(msgCallback) {
@@ -111,13 +113,7 @@ export class Canvas {
       const parsed = JSON.parse(data);
       const coords = `${parsed.c},${parsed.r}`;
 
-      const pending = this.#pendingEcho.get(coords) ?? 0;
-      if (pending > 0) {
-        if (pending === 1) this.#pendingEcho.delete(coords);
-        else this.#pendingEcho.set(coords, pending - 1);
-        this.#state[coords] = parsed.v;
-        return; // our own echo — state already correct, don't notify game
-      }
+      if (parsed.sid === this.#sessionId) return;
 
       // external change
       const lx = parsed.c - this.#x;
@@ -154,17 +150,12 @@ export class Canvas {
       const c = this.#state[key];
       this.#dirty.delete(key);
       const [x, y] = key.split(",").map(Number);
-      this.#pendingEcho.set(key, (this.#pendingEcho.get(key) ?? 0) + 1);
       const resp = await fetch(SYNC_URL + "/pixel", {
         method: "POST",
         body: JSON.stringify({ c: x, r: y, v: c, sid: this.#sessionId }),
       });
-      if (!resp.ok) {
-        const n = this.#pendingEcho.get(key);
-        if (n <= 1) this.#pendingEcho.delete(key);
-        else this.#pendingEcho.set(key, n - 1);
+      if (!resp.ok)
         console.error(`sync pixel(${x},${y}) failed: ${resp.status} ${resp.statusText}`);
-      }
       if (++requestCount >= 20) {
         requestCount = 0;
         await Canvas.wait(0);
@@ -217,17 +208,12 @@ export class Canvas {
       const c = this.#state[key];
       this.#dirty.delete(key);
       const [x, y] = key.split(",").map(Number);
-      this.#pendingEcho.set(key, (this.#pendingEcho.get(key) ?? 0) + 1);
       const resp = await fetch(SYNC_URL + "/pixel", {
         method: "POST",
         body: JSON.stringify({ c: x, r: y, v: c, sid: this.#sessionId }),
       });
-      if (!resp.ok) {
-        const n = this.#pendingEcho.get(key);
-        if (n <= 1) this.#pendingEcho.delete(key);
-        else this.#pendingEcho.set(key, n - 1);
+      if (!resp.ok)
         console.error(`close pixel(${x},${y}) failed: ${resp.status} ${resp.statusText}`);
-      }
       if (++requestCount >= 20) {
         requestCount = 0;
         await Canvas.wait(0);
@@ -280,7 +266,7 @@ export class Canvas {
   }
 
   static async load_png(path) {
-    const image = sharp(path);
+    const image = sharp(resolve(PROJECT_ROOT, path));
     const { width, height } = await image.metadata();
     const raw = await image.removeAlpha().raw().toBuffer();
     const ch = (v) => v.toString(16).padStart(2, "0");
