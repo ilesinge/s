@@ -5,8 +5,9 @@ import { GameOverState } from "./GameOverState.js";
 import { ShowQrState } from "./ShowQrState.js";
 
 export class SnakeApp extends App {
-  constructor(canvas, options) {
+  constructor(canvas, options, vsmode = false) {
     super(canvas, options);
+    this.vsmode = vsmode;
 
     this._register("title", new TitleState());
     this._register("play", new PlayState());

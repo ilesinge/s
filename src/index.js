@@ -19,34 +19,29 @@ const canvas = new Canvas({
   restore: !args["no-restore"],
 });
 
-// Ordered app list for nextApp() cycling
-const appOrder = [];
 let currentAppIndex = -1;
 
 async function startAppAt(index) {
-  if (currentAppIndex >= 0) await appOrder[currentAppIndex].onExit();
+  if (currentAppIndex >= 0) await apps[currentAppIndex].app.onExit();
   currentAppIndex = index;
-  await appOrder[currentAppIndex].onEnter();
+  await apps[currentAppIndex].app.onEnter();
 }
 
 async function nextApp() {
-  await startAppAt((currentAppIndex + 1) % appOrder.length);
+  await startAppAt((currentAppIndex + 1) % apps.length);
 }
 
 async function prevApp() {
-  await startAppAt((currentAppIndex - 1 + appOrder.length) % appOrder.length);
+  await startAppAt((currentAppIndex - 1 + apps.length) % apps.length);
 }
 
-const snakeApp = new SnakeApp(canvas, { nextApp, prevApp });
-appOrder.push(snakeApp);
-
-// Named map for CLI /app command
-const apps = {
-  snake: snakeApp,
-};
+const apps = [
+  { name: "snake", app: new SnakeApp(canvas, { nextApp, prevApp }) },
+  { name: "snakeVs", app: new SnakeApp(canvas, { nextApp, prevApp }, true) },
+];
 
 await canvas.connect(({ x, y, c, sid }) => {
-  if (currentAppIndex >= 0) appOrder[currentAppIndex].onMessage(x, y, c, sid);
+  if (currentAppIndex >= 0) apps[currentAppIndex].app.onMessage(x, y, c, sid);
 });
 
 function help() {
@@ -55,7 +50,9 @@ function help() {
   console.log("/qr [text]       — afficher un QR code");
   console.log("/dqr [text]      — afficher un double QR code");
   console.log("/sprite [name]   — afficher un sprite");
-  console.log(`/app [name]      — lancer une app (${Object.keys(apps).join(", ")})`);
+  console.log(
+    `/app [name]      — lancer une app (${apps.map((a) => a.name).join(", ")})`,
+  );
   console.log("/q               — quitter");
 }
 
@@ -77,12 +74,13 @@ async function run(cmd, arg) {
       canvas.draw_sprite(await Canvas.load_png(`sprites/${arg}.png`));
       break;
     case "app": {
-      const app = apps[arg];
-      if (!app) {
-        console.log(`App inconnue: ${arg}. Apps disponibles: ${Object.keys(apps).join(", ")}`);
+      const idx = apps.findIndex((a) => a.name === arg);
+      if (idx === -1) {
+        console.log(
+          `App inconnue: ${arg}. Apps disponibles: ${apps.map((a) => a.name).join(", ")}`,
+        );
         break;
       }
-      const idx = appOrder.indexOf(app);
       await startAppAt(idx);
       break;
     }
@@ -95,7 +93,9 @@ async function run(cmd, arg) {
 }
 
 // Detect if a command was passed as a CLI arg
-const cliCmd = ["c", "qr", "dqr", "sprite", "app"].find((c) => args[c] !== undefined);
+const cliCmd = ["c", "qr", "dqr", "sprite", "app"].find(
+  (c) => args[c] !== undefined,
+);
 
 if (cliCmd) {
   await run(cliCmd, args[cliCmd] === true ? "" : args[cliCmd]);
@@ -104,7 +104,10 @@ if (cliCmd) {
     // Stay alive; let the event loop keep the process running.
     // Clean shutdown on SIGINT / SIGTERM.
     for (const sig of ["SIGINT", "SIGTERM"]) {
-      process.on(sig, async () => { await canvas.close(); process.exit(0); });
+      process.on(sig, async () => {
+        await canvas.close();
+        process.exit(0);
+      });
     }
   } else {
     await canvas.flush();
@@ -112,22 +115,26 @@ if (cliCmd) {
   }
 } else {
   // Interactive mode
-  const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
-
-  const prompt = () => rl.question("> ", async (line) => {
-    const trimmed = line.trim();
-    if (!trimmed.startsWith("/")) {
-      console.log("Les commandes commencent par /. Tapez /help.");
-      return prompt();
-    }
-    const [rawCmd, ...rest] = trimmed.slice(1).split(" ");
-    const cont = await run(rawCmd.toLowerCase(), rest.join(" "));
-    if (cont) prompt();
-    else {
-      rl.close();
-      await canvas.close();
-    }
+  const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout,
   });
+
+  const prompt = () =>
+    rl.question("> ", async (line) => {
+      const trimmed = line.trim();
+      if (!trimmed.startsWith("/")) {
+        console.log("Les commandes commencent par /. Tapez /help.");
+        return prompt();
+      }
+      const [rawCmd, ...rest] = trimmed.slice(1).split(" ");
+      const cont = await run(rawCmd.toLowerCase(), rest.join(" "));
+      if (cont) prompt();
+      else {
+        rl.close();
+        await canvas.close();
+      }
+    });
 
   prompt();
 }

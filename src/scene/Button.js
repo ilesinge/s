@@ -14,6 +14,6 @@ export class Button extends Sprite {
   }
 
   onClick(x, y, v, sid) {
-    this.#onClick(x, y, v, sid);
+    this.#onClick(sid, x, y, v);
   }
 }

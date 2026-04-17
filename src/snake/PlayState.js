@@ -38,6 +38,8 @@ export class PlayState extends AppState {
     [5, 7],
   ];
 
+  #players = [];
+
   async onEnter() {
     this.#score = 0;
     this.#active = true;
@@ -51,7 +53,7 @@ export class PlayState extends AppState {
 
     this.add(this.#bg).add(this.#food).add(this.#bonus).add(this.#portal);
 
-    this.addSnake();
+    this.addSnake(this.app.vsmode && this.app.launcherSid);
 
     this.canvas.lock();
 
@@ -59,17 +61,25 @@ export class PlayState extends AppState {
     this.#schedulePortal();
   }
 
-  addSnake() {
+  addSnake(sid) {
+    if (sid) {
+      this.#players.push(sid);
+    }
+
     const pattern =
       this.#availableSnakePatterns[
         Math.floor(Math.random() * this.#availableSnakePatterns.length)
       ];
-    const snake = new Snake(pattern, {
-      food: this.#food,
-      snakes: this.#snakes,
-      bonus: this.#bonus,
-      portal: this.#portal,
-    });
+    const snake = new Snake(
+      pattern,
+      {
+        food: this.#food,
+        snakes: this.#snakes,
+        bonus: this.#bonus,
+        portal: this.#portal,
+      },
+      sid,
+    );
     snake.onDead = () => this.#onSnakeDeath(snake);
     snake.onAteFood = (s) => this.#onAteFood(s);
     snake.onAteBonus = (s) => this.#onAteBonus(s);
@@ -88,6 +98,11 @@ export class PlayState extends AppState {
   }
 
   onMessage(x, y, v, sid) {
+    if (this.app.vsmode && sid) {
+      if (this.#players.indexOf(sid) < 0) {
+        this.addSnake(sid);
+      }
+    }
     for (const d of this.drawables) {
       if (d.hitTest(x, y)) d.onClick(x, y, v, sid);
       d.onMessage(x, y, v, sid);
@@ -97,6 +112,12 @@ export class PlayState extends AppState {
   async #onSnakeDeath(snake) {
     const snakeIndex = this.#snakes.indexOf(snake);
     this.#snakes.splice(snakeIndex, 1);
+
+    const sid = snake.getSid();
+    if (sid) {
+      const playerIndex = this.#players.indexOf(sid);
+      if (playerIndex >= 0) this.#players.splice(playerIndex, 1);
+    }
 
     if (this.#snakes.length <= 0) {
       await this.setState("game_over");
@@ -116,9 +137,7 @@ export class PlayState extends AppState {
     snake.setSpeed(boostedMs);
     this.#bonusTimeoutId = setTimeout(() => {
       if (!this.#active) return;
-      snake.setSpeed(
-        Math.max(200, 1000 - Math.floor(this.#score / 10) * 100),
-      );
+      snake.setSpeed(Math.max(200, 1000 - Math.floor(this.#score / 10) * 100));
       this.#scheduleBonus();
     }, BONUS_DURATION);
   }

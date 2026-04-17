@@ -34,15 +34,26 @@ export class Snake extends GameObject {
   }
 
   onAdd() {
-    const cx = Math.floor(SCREEN_SIZE / 2);
-    const cy = Math.floor(SCREEN_SIZE / 2);
+    const dirs = [
+      { dx: 1, dy: 0 },
+      { dx: -1, dy: 0 },
+      { dx: 0, dy: 1 },
+      { dx: 0, dy: -1 },
+    ];
+    const dir = dirs[Math.floor(Math.random() * dirs.length)];
+    const cx = Math.floor(Math.random() * SCREEN_SIZE);
+    const cy = Math.floor(Math.random() * SCREEN_SIZE);
     this.#segments = [
       { x: cx, y: cy },
-      { x: cx - 1, y: cy },
-      { x: cx - 2, y: cy },
+      { x: (cx - dir.dx + SCREEN_SIZE) % SCREEN_SIZE, y: (cy - dir.dy + SCREEN_SIZE) % SCREEN_SIZE },
+      { x: (cx - dir.dx * 2 + SCREEN_SIZE) % SCREEN_SIZE, y: (cy - dir.dy * 2 + SCREEN_SIZE) % SCREEN_SIZE },
     ];
-    this.#dir = { dx: 1, dy: 0 };
-    this.#nextDir = { dx: 1, dy: 0 };
+    this.#dir = dir;
+    this.#nextDir = dir;
+  }
+
+  getSid() {
+    return this.#sid;
   }
 
   onUpdate(dt) {
@@ -69,7 +80,8 @@ export class Snake extends GameObject {
       this.onUsedPortal(this);
     } else if (this.#food.tryEat(newHead)) {
       this.eat();
-      const occ = this.#snakes.flatMap((s) => s.getSegments())
+      const occ = this.#snakes
+        .flatMap((s) => s.getSegments())
         .concat(this.#bonus.getPosition() ? [this.#bonus.getPosition()] : [])
         .concat(this.#portal.getPair() ?? []);
       this.#food.addNew(occ);
