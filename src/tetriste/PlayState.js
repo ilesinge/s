@@ -32,43 +32,150 @@ const TETROMINOS = [
 const SHAPES = [
   // 0: I
   [
-    [[0, 0], [0, 1], [0, 2], [0, 3]],
-    [[0, 0], [1, 0], [2, 0], [3, 0]],
+    [
+      [0, 0],
+      [0, 1],
+      [0, 2],
+      [0, 3],
+    ],
+    [
+      [0, 0],
+      [1, 0],
+      [2, 0],
+      [3, 0],
+    ],
+    [
+      [3, 0],
+      [3, 1],
+      [3, 2],
+      [3, 3],
+    ],
+    [
+      [0, 3],
+      [1, 3],
+      [2, 3],
+      [3, 3],
+    ],
   ],
   // 1: T
   [
-    [[0, 1], [1, 0], [1, 1], [1, 2]],
-    [[0, 0], [1, 0], [1, 1], [2, 0]],
-    [[0, 0], [0, 1], [0, 2], [1, 1]],
-    [[0, 1], [1, 0], [1, 1], [2, 1]],
+    [
+      [0, 1],
+      [1, 0],
+      [1, 1],
+      [1, 2],
+    ],
+    [
+      [0, 0],
+      [1, 0],
+      [1, 1],
+      [2, 0],
+    ],
+    [
+      [0, 0],
+      [0, 1],
+      [0, 2],
+      [1, 1],
+    ],
+    [
+      [0, 1],
+      [1, 0],
+      [1, 1],
+      [2, 1],
+    ],
   ],
   // 2: O
   [
-    [[0, 0], [0, 1], [1, 0], [1, 1]],
+    [
+      [0, 0],
+      [0, 1],
+      [1, 0],
+      [1, 1],
+    ],
   ],
   // 3: Z
   [
-    [[0, 0], [0, 1], [1, 1], [1, 2]],
-    [[0, 1], [1, 0], [1, 1], [2, 0]],
+    [
+      [0, 0],
+      [0, 1],
+      [1, 1],
+      [1, 2],
+    ],
+    [
+      [0, 1],
+      [1, 0],
+      [1, 1],
+      [2, 0],
+    ],
   ],
   // 4: S
   [
-    [[0, 1], [0, 2], [1, 0], [1, 1]],
-    [[0, 0], [1, 0], [1, 1], [2, 1]],
+    [
+      [0, 1],
+      [0, 2],
+      [1, 0],
+      [1, 1],
+    ],
+    [
+      [0, 0],
+      [1, 0],
+      [1, 1],
+      [2, 1],
+    ],
   ],
   // 5: L
   [
-    [[0, 0], [1, 0], [2, 0], [2, 1]],
-    [[0, 0], [0, 1], [0, 2], [1, 0]],
-    [[0, 0], [0, 1], [1, 1], [2, 1]],
-    [[0, 2], [1, 0], [1, 1], [1, 2]],
+    [
+      [0, 0],
+      [1, 0],
+      [2, 0],
+      [2, 1],
+    ],
+    [
+      [0, 0],
+      [0, 1],
+      [0, 2],
+      [1, 0],
+    ],
+    [
+      [0, 0],
+      [0, 1],
+      [1, 1],
+      [2, 1],
+    ],
+    [
+      [0, 2],
+      [1, 0],
+      [1, 1],
+      [1, 2],
+    ],
   ],
   // 6: J
   [
-    [[0, 1], [1, 1], [2, 0], [2, 1]],
-    [[0, 0], [1, 0], [1, 1], [1, 2]],
-    [[0, 0], [0, 1], [1, 0], [2, 0]],
-    [[0, 0], [0, 1], [0, 2], [1, 2]],
+    [
+      [0, 1],
+      [1, 1],
+      [2, 0],
+      [2, 1],
+    ],
+    [
+      [0, 0],
+      [1, 0],
+      [1, 1],
+      [1, 2],
+    ],
+    [
+      [0, 0],
+      [0, 1],
+      [1, 0],
+      [2, 0],
+    ],
+    [
+      [0, 0],
+      [0, 1],
+      [0, 2],
+      [1, 2],
+    ],
   ],
 ];
 
@@ -192,10 +299,19 @@ export class PlayState extends AppState {
 
     this.add(
       new Button(
-        14,
+        11,
         22,
         await Canvas.load_png("sprites/tetriste/buttons2.png"),
-        () => this.onUpButton(),
+        () => this.onRotateLeftButton(),
+      ),
+    );
+
+    this.add(
+      new Button(
+        17,
+        22,
+        await Canvas.load_png("sprites/tetriste/buttons5.png"),
+        () => this.onRotateRightButton(),
       ),
     );
 
@@ -321,12 +437,9 @@ export class PlayState extends AppState {
     }
   }
 
-  // rotate tetromino
-  onUpButton() {
+  #tryRotate(nextRot) {
     if (this.#gameOver || !this.#currentPiece) return;
-    const { type, rotation, row, col } = this.#currentPiece;
-    const nextRot = (rotation + 1) % SHAPES[type].length;
-    // Try in place, then wall kick left/right
+    const { type, row, col } = this.#currentPiece;
     if (this.#isValid(type, nextRot, row, col)) {
       this.#currentPiece.rotation = nextRot;
     } else if (this.#isValid(type, nextRot, row, col - 1)) {
@@ -336,6 +449,20 @@ export class PlayState extends AppState {
       this.#currentPiece.rotation = nextRot;
       this.#currentPiece.col++;
     }
+  }
+
+  // rotate tetromino counterclockwise
+  onRotateLeftButton() {
+    if (!this.#currentPiece) return;
+    const { type, rotation } = this.#currentPiece;
+    this.#tryRotate((rotation - 1 + SHAPES[type].length) % SHAPES[type].length);
+  }
+
+  // rotate tetromino clockwise
+  onRotateRightButton() {
+    if (!this.#currentPiece) return;
+    const { type, rotation } = this.#currentPiece;
+    this.#tryRotate((rotation + 1) % SHAPES[type].length);
   }
 
   // move tetromino right
