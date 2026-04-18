@@ -55,8 +55,6 @@ export class PlayState extends AppState {
 
     this.addSnake(this.app.vsmode && this.app.launcherSid);
 
-    this.canvas.lock();
-
     this.#scheduleBonus();
     this.#schedulePortal();
   }
@@ -90,7 +88,6 @@ export class PlayState extends AppState {
 
   onExit() {
     this.#active = false;
-    this.canvas.unlock();
     this.#snakes = [];
     clearTimeout(this.#spawnTimeoutId);
     clearTimeout(this.#bonusTimeoutId);

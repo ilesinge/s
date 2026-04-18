@@ -15,7 +15,7 @@ export class Sprite extends GameObject {
     this.#width = width;
     this.#height = height;
     this.#colors = pixels.map((hex) => {
-      return Canvas.nearest_palette(hex);
+      return hex === null ? null : Canvas.nearest_palette(hex);
     });
   }
 

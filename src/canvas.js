@@ -34,7 +34,6 @@ export class Canvas {
   #savedStates = [];
   #dirty = new Set();
   #closed = false;
-  #locked = false;
   #syncWake = null;
   #restore;
 
@@ -120,7 +119,7 @@ export class Canvas {
       const ly = parsed.r - this.#y;
       const inBounds =
         lx >= 0 && lx < SCREEN_SIZE && ly >= 0 && ly < SCREEN_SIZE;
-      if (this.#locked && inBounds) {
+      if (inBounds) {
         this.#dirty.add(coords);
         this.#signalSync();
       } else {
@@ -164,13 +163,6 @@ export class Canvas {
         await Canvas.wait(0);
       }
     }
-  }
-
-  lock() {
-    this.#locked = true;
-  }
-  unlock() {
-    this.#locked = false;
   }
 
   get_pixel(x, y) {
@@ -272,12 +264,21 @@ export class Canvas {
 
   static async load_png(path) {
     const image = sharp(resolve(PROJECT_ROOT, path));
-    const { width, height } = await image.metadata();
-    const raw = await image.removeAlpha().raw().toBuffer();
+    const { width, height, channels } = await image.metadata();
+    const hasAlpha = channels === 4;
+    const raw = hasAlpha
+      ? await image.raw().toBuffer()
+      : await image.removeAlpha().raw().toBuffer();
     const ch = (v) => v.toString(16).padStart(2, "0");
     const pixels = [];
-    for (let i = 0; i < raw.length; i += 3)
-      pixels.push(`#${ch(raw[i])}${ch(raw[i + 1])}${ch(raw[i + 2])}`);
+    const step = hasAlpha ? 4 : 3;
+    for (let i = 0; i < raw.length; i += step) {
+      if (hasAlpha && raw[i + 3] === 0) {
+        pixels.push(null);
+      } else {
+        pixels.push(`#${ch(raw[i])}${ch(raw[i + 1])}${ch(raw[i + 2])}`);
+      }
+    }
     return { width, height, pixels };
   }
 
